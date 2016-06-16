@@ -53,6 +53,12 @@
 #endif
 */
 
+// dma_buf
+#include <linux/dma-buf.h>
+#include <linux/scatterlist.h>
+#define AMVIDEOCAP_GET_DMABUF_FD   _IOWR(AC_MAGIC, 0x50, int)
+// dma_buf end
+
 #ifdef CONFIG_PM
 #include <linux/pm.h>
 #endif
@@ -94,6 +100,243 @@ static inline struct amvideocap_global_data *getgctrl(void)
 #define gLOCK() mutex_lock(&(getgctrl()->lock))
 #define gUNLOCK() mutex_unlock(&(getgctrl()->lock))
 #define gLOCKINIT() mutex_init(&(getgctrl()->lock))
+
+
+// dma_buf
+
+static int amvideocap_attach_dma_buf(struct dma_buf *dmabuf,
+	struct device *dev,
+	struct dma_buf_attachment *attach)
+{
+	pr_info("amvideocap_attach_dma_buf\n");
+	return 0;
+}
+
+static void amvideocap_detach_dma_buf(struct dma_buf *dmabuf,
+	struct dma_buf_attachment *attach)
+{
+	pr_info("amvideocap_detach_dma_buf\n");
+}
+
+static struct sg_table *
+amvideocap_map_dma_buf(struct dma_buf_attachment *attach,
+	enum dma_data_direction dir)
+{
+	int ret;
+	struct sg_table *sgt = NULL;
+
+	pr_info("amvideocap_map_dma_buf\n");
+
+	// TODO: figure out how to clean this pointer up
+	sgt = kzalloc(sizeof(*sgt), GFP_KERNEL);
+	if (!sgt)
+	{
+		pr_info("amvideocap_map_dma_buf: kzalloc failed.\n");
+		return NULL;
+	}
+
+	// CMA memory will always have a single entry
+	ret = sg_alloc_table(sgt, 1, GFP_KERNEL);
+	if (ret) {
+		pr_info("failed to alloc sgt.\n");
+		return NULL;
+	}
+
+	// CMA memory should always be page aligned and,
+	// therefore, always have a 0 offset
+	sg_set_page(sgt->sgl,
+		phys_to_page(getgctrl()->phyaddr),
+		getgctrl()->size,
+		0);
+
+	sg_dma_address(sgt->sgl) = getgctrl()->phyaddr;
+	sg_dma_len(sgt->sgl) = getgctrl()->size;
+
+	pr_info("amvideocap_map_dma_buf: sgt=%p, page=%p (%p)\n",
+		sgt,
+		(void*)phys_to_page(getgctrl()->phyaddr),
+		(void*)getgctrl()->phyaddr);
+
+	return sgt;
+}
+
+static void amvideocap_unmap_dma_buf(struct dma_buf_attachment *attach,
+	struct sg_table *sgt,
+	enum dma_data_direction dir)
+{
+	// TODO: Do we clean up the sg_table* ?
+	pr_info("amvideocap_unmap_dma_buf\n");
+
+	kfree(sgt);
+}
+
+static void *amvideocap_dmabuf_kmap_atomic(struct dma_buf *dma_buf,
+	unsigned long page_num)
+{
+	/* TODO */
+	pr_info("amvideocap_dmabuf_kmap_atomic\n");
+	return NULL;
+}
+
+static void amvideocap_dmabuf_kunmap_atomic(struct dma_buf *dma_buf,
+	unsigned long page_num,
+	void *addr)
+{
+	/* TODO */
+	pr_info("amvideocap_dmabuf_kunmap_atomic\n");
+}
+
+static void *amvideocap_dmabuf_kmap(struct dma_buf *dma_buf,
+	unsigned long page_num)
+{
+	/* TODO */
+	pr_info("amvideocap_dmabuf_kmap\n");
+	return NULL;
+}
+
+static void amvideocap_dmabuf_kunmap(struct dma_buf *dma_buf,
+	unsigned long page_num, void *addr)
+{
+	/* TODO */
+	pr_info("amvideocap_dmabuf_kunmap\n");
+}
+
+static int amvideocap_dmabuf_mmap(struct dma_buf *dma_buf,
+	struct vm_area_struct *vma)
+{
+	unsigned long off;
+	unsigned vm_size = vma->vm_end - vma->vm_start;
+	struct dma_buf_attachment* attach = NULL;
+	struct sg_table* sgt = NULL;
+	struct scatterlist *sg = NULL;
+	dma_addr_t phys;
+	unsigned long dmaSize = 0;
+	//int i;
+
+	pr_info("amvideocap_dmabuf_mmap\n");
+
+	if (vm_size == 0)
+	{
+		return -EAGAIN;
+	}
+
+	vma->vm_flags |= VM_DONTEXPAND | VM_DONTDUMP | VM_IO;
+
+	attach = dma_buf_attach(dma_buf, getgctrl()->dev);
+	if (!attach)
+	{
+		pr_info("amvideocap_dmabuf_mmap: dma_buf_attach failed\n");
+		return -EAGAIN;
+	}
+	else
+	{
+		pr_info("amvideocap_dmabuf_mmap: attach=%p\n", attach);
+	}
+
+	sgt = dma_buf_map_attachment(attach, DMA_NONE);
+	if (!sgt)
+	{
+		pr_info("amvideocap_dmabuf_mmap: dma_buf_map_attachment failed\n");
+		return -EAGAIN;
+	}
+	else
+	{
+		pr_info("amvideocap_dmabuf_mmap: sgt=%p\n", sgt);
+	}
+
+	//for_each_sg(sgt->sgl, sg, sgt->nents, i)
+	{
+		sg = sgt->sgl;
+		pr_info("amvideocap_dmabuf_mmap: sg=%p\n", sg);
+
+		dmaSize = sg_dma_len(sg);
+		// TODO: Validate size <= dmaSize here
+
+		phys = sg_dma_address(sg);
+		pr_info("amvideocap_dmabuf_mmap: phys=%p (%p), length=%p\n",
+			(void*)phys,
+			(void*)sg->dma_address,
+			(void*)dmaSize);
+
+		off = vma->vm_pgoff << PAGE_SHIFT;
+		off += (unsigned long)phys;
+
+		if (remap_pfn_range(vma,
+			vma->vm_start,
+			off >> PAGE_SHIFT,
+			vm_size,
+			vma->vm_page_prot))
+		{
+			pr_info("remap_pfn_range failed\n");
+			return -EAGAIN;
+		}
+
+		pr_info("amvideocap_dmabuf_mmap ok\n");
+	}
+
+	
+	//struct amvideocap_private *priv = file->private_data;
+	//unsigned long off = vma->vm_pgoff << PAGE_SHIFT;
+	//unsigned vm_size = vma->vm_end - vma->vm_start;
+	//if (!priv->phyaddr)
+	//return -EIO;
+
+	//if (vm_size == 0)
+	//return -EAGAIN;
+	///* pr_info("mmap:%x\n",vm_size); */
+	//off += priv->phyaddr;
+
+	//vma->vm_flags |= VM_DONTEXPAND | VM_DONTDUMP | VM_IO;
+	//if (remap_pfn_range(vma, vma->vm_start, off >> PAGE_SHIFT,
+	//	vma->vm_end - vma->vm_start,
+	//	vma->vm_page_prot)) {
+	//	pr_err("set_cached: failed remap_pfn_range\n");
+	//	return -EAGAIN;
+	//}
+	//pr_info("amvideocap_mmap ok\n");
+	
+	return 0;
+}
+
+static void amvideocap_dmabuf_release(struct dma_buf *dma_buf)
+{
+	// TODO
+}
+
+static struct dma_buf_ops amvideocap_dmabuf_ops = {
+	.attach = amvideocap_attach_dma_buf,
+	.detach = amvideocap_detach_dma_buf,
+	.map_dma_buf = amvideocap_map_dma_buf,
+	.unmap_dma_buf = amvideocap_unmap_dma_buf,
+	.kmap = amvideocap_dmabuf_kmap,
+	.kmap_atomic = amvideocap_dmabuf_kmap_atomic,
+	.kunmap = amvideocap_dmabuf_kunmap,
+	.kunmap_atomic = amvideocap_dmabuf_kunmap_atomic,
+	.mmap = amvideocap_dmabuf_mmap,
+	.release = amvideocap_dmabuf_release,
+};
+
+static int get_dmabuf_fd(struct amvideocap_private *priv, unsigned long arg)
+{
+	// IOCTL interface
+	int __user *dmabuf_fd = (int __user *) arg;
+	struct dma_buf* dmabuf;
+	int flags = 0;	// No idea what this should be
+	int ret = -1;
+
+	pr_info("amvideocap get_dmabuf_fd\n");
+
+	dmabuf = dma_buf_export(priv,
+		&amvideocap_dmabuf_ops,
+		getgctrl()->size,
+		flags);
+
+	ret = dma_buf_fd(dmabuf, flags);
+	pr_info("amvideocap get_dmabuf_fd- dmabuf=%p, fd=%d\n", dmabuf, ret);
+
+	return put_user(ret, dmabuf_fd);
+}
+
 
 /*********************************************************
  * /dev/amvideo APIs
@@ -205,16 +448,16 @@ static int amvideocap_get_input_format(struct vframe_s *vf)
 	/* pr_info("vf->type:0x%x\n", vf->type); */
 
 	if ((vf->type & VIDTYPE_VIU_422) == VIDTYPE_VIU_422) {
-		pr_info
-		("*****************Into VIDTYPE_VIU_422******************\n");
+		//pr_info
+		//("*****************Into VIDTYPE_VIU_422******************\n");
 		format = GE2D_FORMAT_S16_YUV422;
 	} else if ((vf->type & VIDTYPE_VIU_444) == VIDTYPE_VIU_444) {
-		pr_info
-		("*****************Into VIDTYPE_VIU_444******************\n");
+		//pr_info
+		//("*****************Into VIDTYPE_VIU_444******************\n");
 		format = GE2D_FORMAT_S24_YUV444;
 	} else if ((vf->type & VIDTYPE_VIU_NV21) == VIDTYPE_VIU_NV21) {
-		pr_info
-		("****************Into VIDTYPE_VIU_NV21******************\n");
+		//pr_info
+		//("****************Into VIDTYPE_VIU_NV21******************\n");
 		format = GE2D_FORMAT_M24_NV21;
 	}
 	return format;
@@ -245,13 +488,13 @@ static ssize_t amvideocap_YUV_to_RGB(
 		pr_err("%s: failed to alloc y addr\n", __func__);
 		return -1;
 	}
-	pr_info("RGB_phy_addr:%x\n", (unsigned int)priv->phyaddr);
+	//pr_info("RGB_phy_addr:%x\n", (unsigned int)priv->phyaddr);
 	RGB_addr = (unsigned long)priv->vaddr;
 	if (!RGB_addr) {
 		pr_err("%s: failed to remap y addr\n", __func__);
 		return -1;
 	}
-	pr_info("RGB_addr:%lx\n", RGB_addr);
+	//pr_info("RGB_addr:%lx\n", RGB_addr);
 
 	if (vf == NULL) {
 		pr_err("%s: vf is NULL\n", __func__);
@@ -298,8 +541,8 @@ static ssize_t amvideocap_YUV_to_RGB(
 	canvas_read(y_index, &cs0);
 	canvas_read(u_index, &cs1);
 	canvas_read(v_index, &cs2);
-	pr_info("y_index=[0x%x]  u_index=[0x%x] cur_index:%x\n", y_index,
-			u_index, cur_index);
+	//pr_info("y_index=[0x%x]  u_index=[0x%x] cur_index:%x\n", y_index,
+	//		u_index, cur_index);
 	ge2d_config.src_planes[0].addr = cs0.addr;
 	ge2d_config.src_planes[0].w = cs0.width;
 	ge2d_config.src_planes[0].h = cs0.height;
@@ -309,8 +552,8 @@ static ssize_t amvideocap_YUV_to_RGB(
 	ge2d_config.src_planes[2].addr = cs2.addr;
 	ge2d_config.src_planes[2].w = cs2.width;
 	ge2d_config.src_planes[2].h = cs2.height;
-	pr_info("w=%d-height=%d cur_index:%x\n", cs0.width, cs0.height,
-			cur_index);
+	//pr_info("w=%d-height=%d cur_index:%x\n", cs0.width, cs0.height,
+	//		cur_index);
 
 	ge2d_config.src_key.key_enable = 0;
 	ge2d_config.src_key.key_mask = 0;
@@ -331,7 +574,7 @@ static ssize_t amvideocap_YUV_to_RGB(
 	ge2d_config.src_para.height = input_height;
 
 	canvas_read(canvas_idx, &cd);
-	pr_info("cd.addr:%x\n", (unsigned int)cd.addr);
+	//pr_info("cd.addr:%x\n", (unsigned int)cd.addr);
 	ge2d_config.dst_planes[0].addr = cd.addr;
 	ge2d_config.dst_planes[0].w = cd.width;
 	ge2d_config.dst_planes[0].h = cd.height;
@@ -396,14 +639,14 @@ static int amvideocap_capture_one_frame(
 	int curindex;
 	struct vframe_s *vf = vfput;
 	int ret = 0;
-	pr_info("%s:start vf=%p,index=%x\n", __func__, vf, index);
+	//pr_info("%s:start vf=%p,index=%x\n", __func__, vf, index);
 	if (!vf)
 		ret = amvideocap_capture_get_frame(priv, &vf, &curindex);
 	else
 		curindex = index;
 	if (ret < 0 || !vf)
 		return -EAGAIN;
-	pr_info("%s: get vf type=%x\n", __func__, vf->type);
+	//pr_info("%s: get vf type=%x\n", __func__, vf->type);
 
 #define CHECK_AND_SETVAL(want, def) ((want) > 0 ? (want) : (def))
 	ge2dfmt = CHECK_AND_SETVAL(priv->want.fmt, vf->type);
@@ -419,8 +662,8 @@ static int amvideocap_capture_one_frame(
 	amvideocap_capture_put_frame(priv, vf);
 
 	if (!ret) {
-		pr_info("%s: capture ok priv->want.fmt=%d\n", __func__,
-				priv->want.fmt);
+		//pr_info("%s: capture ok priv->want.fmt=%d\n", __func__,
+		//		priv->want.fmt);
 		priv->state = AMVIDEOCAP_STATE_FINISHED_CAPTURE;
 		priv->src.width = vf->width;
 		priv->src.height = vf->height;
@@ -433,7 +676,7 @@ static int amvideocap_capture_one_frame(
 			priv->out.fmt);	/* RGBn */
 	} else
 		priv->state = AMVIDEOCAP_STATE_ERROR;
-	pr_info("amvideocap_capture_one_frame priv->state=%d\n", priv->state);
+	//pr_info("amvideocap_capture_one_frame priv->state=%d\n", priv->state);
 	return ret;
 }
 
@@ -482,8 +725,8 @@ static int amvideocap_capture_one_frame_wait(
 			}
 		} else {
 			ret = amvideocap_capture_one_frame(priv, NULL, 0);
-			pr_info("amvideocap_capture_one_frame_wait ret=%d\n",
-					ret);
+			//pr_info("amvideocap_capture_one_frame_wait ret=%d\n",
+			//		ret);
 		}
 	} while (ret == -EAGAIN && time_before(jiffies, timeout));
 	ext_register_end_frame_callback(NULL);	/*del req */
@@ -618,6 +861,11 @@ static long amvideocap_ioctl(struct file *file,
 	}
 	case AMVIDEOCAP_IOR_SET_SRC_HEIGHT: {
 		priv->src_rect.height = arg;
+		break;
+	}
+	case AMVIDEOCAP_GET_DMABUF_FD:
+	{
+		ret = get_dmabuf_fd(priv, arg);
 		break;
 	}
 	default:
