@@ -823,6 +823,9 @@ static int osd_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
 		ret = copy_from_user(&osd_dst_axis, argp, 4 * sizeof(s32));
 		break;
 #if defined(CONFIG_ARCH_MESON64_ODROIDC2) && defined(CONFIG_UMP)
+	case OSD_GET_DMA_BUF_FD:
+		return osd_get_dmabuf_fd(info, fbdev, arg);
+		break;
 	case GET_UMP_SECURE_ID_BUF1:
 		return disp_get_ump_secure_id(info, fbdev, arg, 0);
 		break;

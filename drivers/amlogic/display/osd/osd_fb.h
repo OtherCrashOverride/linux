@@ -73,6 +73,14 @@ extern struct osd_fb_dev_s *gp_fbdev_list[];
 extern const struct color_bit_define_s default_color_format_array[];
 
 #if defined(CONFIG_ARCH_MESON64_ODROIDC2) && defined(CONFIG_UMP)
+// DMA-BUF
+extern int osd_get_dmabuf_fd(struct fb_info *info,
+	struct osd_fb_dev_s *g_fbi, unsigned long arg);
+
+// TODO: Arbitrary definition
+#define OSD_GET_DMA_BUF_FD _IOWR('m', 313, int)
+
+// UMP
 extern int (*disp_get_ump_secure_id) (struct fb_info *info,
         struct osd_fb_dev_s *g_fbi,     unsigned long arg, int buf);
 #define GET_UMP_SECURE_ID_BUF1 _IOWR('m', 311, unsigned int)
