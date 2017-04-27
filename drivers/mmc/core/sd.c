@@ -1004,11 +1004,11 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 		goto free_card;
 
 	/* Initialization sequence for UHS-I cards */
-	if (rocr & SD_ROCR_S18A) {
+//	if (rocr & SD_ROCR_S18A) {
 		err = mmc_sd_init_uhs_card(card);
-		if (err)
-			goto free_card;
-	} else {
+		if (err) {
+//			goto free_card;
+//	} else {
 		/*
 		 * Attempt to change to high-speed (if supported)
 		 */
