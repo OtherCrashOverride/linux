@@ -84,6 +84,10 @@ MODULE_AUTHOR("Matthew Dharm <mdharm-usb@one-eyed-alien.net>");
 MODULE_DESCRIPTION("USB Mass Storage driver for Linux");
 MODULE_LICENSE("GPL");
 
+static unsigned int disable_uas_flag = 0;
+module_param(disable_uas_flag, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(disable_uas_flag, "disables UAS for all devices");
+
 static unsigned int delay_use = 1;
 module_param(delay_use, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(delay_use, "seconds to delay before using a new device");
@@ -1124,7 +1128,7 @@ static int storage_probe(struct usb_interface *intf,
 
 	/* If uas is enabled and this device can do uas then ignore it. */
 #if IS_ENABLED(CONFIG_USB_UAS)
-	if (uas_use_uas_driver(intf, id, NULL))
+	if (!disable_uas_flag && uas_use_uas_driver(intf, id, NULL))
 		return -ENXIO;
 #endif
 
