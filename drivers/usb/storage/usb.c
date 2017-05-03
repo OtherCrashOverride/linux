@@ -84,9 +84,11 @@ MODULE_AUTHOR("Matthew Dharm <mdharm-usb@one-eyed-alien.net>");
 MODULE_DESCRIPTION("USB Mass Storage driver for Linux");
 MODULE_LICENSE("GPL");
 
+#if IS_ENABLED(CONFIG_USB_UAS)
 static unsigned int disable_uas_flag = 0;
 module_param(disable_uas_flag, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(disable_uas_flag, "disables UAS for all devices");
+#endif
 
 static unsigned int delay_use = 1;
 module_param(delay_use, uint, S_IRUGO | S_IWUSR);
