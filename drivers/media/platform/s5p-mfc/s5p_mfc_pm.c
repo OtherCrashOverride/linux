@@ -37,7 +37,6 @@ int s5p_mfc_init_pm(struct s5p_mfc_dev *dev)
 
 	pm = &dev->pm;
 	p_dev = dev;
-	pm->use_clock_gating = dev->variant->use_clock_gating;
 	pm->clock_gate = clk_get(&dev->plat_dev->dev, MFC_GATE_CLK_NAME);
 	if (IS_ERR(pm->clock_gate)) {
 		mfc_err("Failed to get clock-gating control\n");
@@ -109,8 +108,6 @@ int s5p_mfc_clock_on(void)
 	atomic_inc(&clk_ref);
 	mfc_debug(3, "+ %d\n", atomic_read(&clk_ref));
 #endif
-	if (!pm->use_clock_gating)
-		return 0;
 	if (!IS_ERR_OR_NULL(pm->clock_gate))
 		ret = clk_enable(pm->clock_gate);
 	return ret;
@@ -122,32 +119,22 @@ void s5p_mfc_clock_off(void)
 	atomic_dec(&clk_ref);
 	mfc_debug(3, "- %d\n", atomic_read(&clk_ref));
 #endif
-	if (!pm->use_clock_gating)
-		return;
 	if (!IS_ERR_OR_NULL(pm->clock_gate))
 		clk_disable(pm->clock_gate);
 }
 
 int s5p_mfc_power_on(void)
 {
-	int ret = 0;
-
 #ifdef CONFIG_PM
-	ret = pm_runtime_get_sync(pm->device);
-	if (ret)
-		return ret;
+	return pm_runtime_get_sync(pm->device);
 #else
 	atomic_set(&pm->power, 1);
+	return 0;
 #endif
-	if (!pm->use_clock_gating && !IS_ERR_OR_NULL(pm->clock_gate))
-		ret = clk_enable(pm->clock_gate);
-	return ret;
 }
 
 int s5p_mfc_power_off(void)
 {
-	if (!pm->use_clock_gating && !IS_ERR_OR_NULL(pm->clock_gate))
-		clk_disable(pm->clock_gate);
 #ifdef CONFIG_PM
 	return pm_runtime_put_sync(pm->device);
 #else
