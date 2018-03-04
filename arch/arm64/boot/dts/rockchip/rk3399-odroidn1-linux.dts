@@ -1073,3 +1073,8 @@
 &vpu {
 	status = "okay";
 };
+
+&rga {
+	status = "okay";
+};
+
